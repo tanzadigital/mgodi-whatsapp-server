@@ -4,15 +4,14 @@ const QRCode = require("qrcode")
 
 const {
  default: makeWASocket,
- useMultiFileAuthState,
- DisconnectReason
+ useMultiFileAuthState
 } = require("@whiskeysockets/baileys")
 
 const app = express()
 
 const sessions = {}
 
-// create sessions folder if not exists
+// ensure sessions folder exists
 if (!fs.existsSync("./sessions")) {
  fs.mkdirSync("./sessions")
 }
@@ -20,22 +19,21 @@ if (!fs.existsSync("./sessions")) {
 /*
 HEALTH CHECK
 */
-
 app.get("/", (req, res) => {
  res.send("Mgodi WhatsApp Server Running")
 })
 
 /*
-START WHATSAPP SESSION
+START SESSION
 */
-
 async function startSession(userId) {
+
+ if (sessions[userId]) return sessions[userId]
 
  const { state, saveCreds } = await useMultiFileAuthState("./sessions/" + userId)
 
  const sock = makeWASocket({
-  auth: state,
-  printQRInTerminal: false
+  auth: state
  })
 
  sessions[userId] = {
@@ -51,8 +49,7 @@ async function startSession(userId) {
   const { connection, qr } = update
 
   if (qr) {
-   const qrImage = await QRCode.toDataURL(qr)
-   sessions[userId].qr = qrImage
+   sessions[userId].qr = await QRCode.toDataURL(qr)
    console.log("QR generated for", userId)
   }
 
@@ -69,30 +66,26 @@ async function startSession(userId) {
 
  })
 
+ return sessions[userId]
+
 }
 
 /*
-QR ROUTE
+QR ENDPOINT
 */
-
 app.get("/qr/:userId", async (req, res) => {
 
  const userId = req.params.userId
 
- if (!sessions[userId]) {
-  await startSession(userId)
- }
+ const session = await startSession(userId)
 
- const session = sessions[userId]
-
- if (!session.qr) {
+ if (session.qr) {
   return res.json({
-   connected: session.connected
+   qr: session.qr
   })
  }
 
- res.json({
-  qr: session.qr,
+ return res.json({
   connected: session.connected
  })
 
@@ -101,7 +94,6 @@ app.get("/qr/:userId", async (req, res) => {
 /*
 PORT
 */
-
 const PORT = process.env.PORT || 3000
 
 app.listen(PORT, () => {
