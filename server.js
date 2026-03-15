@@ -1,25 +1,31 @@
 const express = require("express")
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require("@whiskeysockets/baileys")
 const QRCode = require("qrcode")
-const { default: makeWASocket, useMultiFileAuthState } = require("@whiskeysockets/baileys")
 
 const app = express()
-app.use(express.json())
 
-// kuhifadhi sessions za users
 const sessions = {}
 
-// function ya kuanzisha WhatsApp session
 async function startSession(userId) {
 
- const { state, saveCreds } = await useMultiFileAuthState(`sessions/${userId}`)
+ const { state, saveCreds } = await useMultiFileAuthState("./sessions/" + userId)
 
  const sock = makeWASocket({
-  auth: state
+  auth: state,
+  printQRInTerminal: true
  })
+
+ sessions[userId] = {
+  sock,
+  qr: null,
+  connected: false
+ }
 
  sock.ev.on("creds.update", saveCreds)
 
- sock.ev.on("connection.update", async ({ qr, connection }) => {
+ sock.ev.on("connection.update", async (update) => {
+
+  const { connection, qr } = update
 
   if (qr) {
    sessions[userId].qr = await QRCode.toDataURL(qr)
@@ -27,25 +33,27 @@ async function startSession(userId) {
 
   if (connection === "open") {
    sessions[userId].connected = true
-   console.log("WhatsApp connected for user:", userId)
+   sessions[userId].qr = null
+   console.log("WhatsApp connected for", userId)
   }
 
   if (connection === "close") {
-   sessions[userId].connected = false
-   console.log("WhatsApp disconnected for user:", userId)
+
+   const shouldReconnect = true
+
+   if (shouldReconnect) {
+    startSession(userId)
+   }
   }
 
  })
 
- sessions[userId] = {
-  sock,
-  connected: false,
-  qr: null
- }
-
 }
 
-// endpoint ya kupata QR
+app.get("/", (req,res)=>{
+ res.send("Mgodi WhatsApp Server Running")
+})
+
 app.get("/qr/:userId", async (req, res) => {
 
  const userId = req.params.userId
@@ -69,36 +77,6 @@ app.get("/qr/:userId", async (req, res) => {
 
 })
 
-// endpoint ya kutuma message
-app.post("/send", async (req, res) => {
-
- const { userId, to, message } = req.body
-
- const session = sessions[userId]
-
- if (!session) {
-  return res.json({ error: "session not found" })
- }
-
- try {
-
-  await session.sock.sendMessage(to, { text: message })
-
-  res.json({
-   status: "sent"
-  })
-
- } catch (err) {
-
-  res.json({
-   error: "failed to send message"
-  })
-
- }
-
-})
-
-// server start
 app.listen(3000, () => {
  console.log("Mgodi WhatsApp Server running on port 3000")
 })
