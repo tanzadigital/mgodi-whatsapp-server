@@ -1,7 +1,6 @@
 const express = require("express")
 const fs = require("fs")
 const QRCode = require("qrcode")
-const pino = require("pino")
 
 const {
  default: makeWASocket,
@@ -13,6 +12,7 @@ const app = express()
 
 const sessions = {}
 
+// create sessions folder if not exists
 if (!fs.existsSync("./sessions")) {
  fs.mkdirSync("./sessions")
 }
@@ -20,9 +20,14 @@ if (!fs.existsSync("./sessions")) {
 /*
 HEALTH CHECK
 */
+
 app.get("/", (req, res) => {
  res.send("Mgodi WhatsApp Server Running")
 })
+
+/*
+START WHATSAPP SESSION
+*/
 
 async function startSession(userId) {
 
@@ -30,8 +35,7 @@ async function startSession(userId) {
 
  const sock = makeWASocket({
   auth: state,
-  logger: pino({ level: "silent" }),
-  printQRInTerminal: true
+  printQRInTerminal: false
  })
 
  sessions[userId] = {
@@ -44,10 +48,11 @@ async function startSession(userId) {
 
  sock.ev.on("connection.update", async (update) => {
 
-  const { connection, qr, lastDisconnect } = update
+  const { connection, qr } = update
 
   if (qr) {
-   sessions[userId].qr = await QRCode.toDataURL(qr)
+   const qrImage = await QRCode.toDataURL(qr)
+   sessions[userId].qr = qrImage
    console.log("QR generated for", userId)
   }
 
@@ -58,20 +63,17 @@ async function startSession(userId) {
   }
 
   if (connection === "close") {
-
-   const shouldReconnect =
-    lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut
-
-   if (shouldReconnect) {
-    console.log("Reconnecting session:", userId)
-    startSession(userId)
-   }
-
+   sessions[userId].connected = false
+   console.log("Connection closed:", userId)
   }
 
  })
 
 }
+
+/*
+QR ROUTE
+*/
 
 app.get("/qr/:userId", async (req, res) => {
 
@@ -83,38 +85,24 @@ app.get("/qr/:userId", async (req, res) => {
 
  const session = sessions[userId]
 
- let attempts = 0
+ if (!session.qr) {
+  return res.json({
+   connected: session.connected
+  })
+ }
 
- const interval = setInterval(() => {
-
-  if (session.qr) {
-
-   clearInterval(interval)
-
-   return res.json({
-    qr: session.qr,
-    connected: session.connected
-   })
-
-  }
-
-  attempts++
-
-  if (attempts > 15) {
-
-   clearInterval(interval)
-
-   return res.json({
-    connected: session.connected
-   })
-
-  }
-
- }, 1000)
+ res.json({
+  qr: session.qr,
+  connected: session.connected
+ })
 
 })
 
-const PORT = process.env.PORT || 8080
+/*
+PORT
+*/
+
+const PORT = process.env.PORT || 3000
 
 app.listen(PORT, () => {
  console.log("Server running on port", PORT)
