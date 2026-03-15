@@ -1,14 +1,18 @@
 {
   "name": "mgodi-whatsapp-server",
   "version": "1.0.0",
-  "description": "WhatsApp session server for Mgodi AI",
+  "description": "Mgodi AI WhatsApp session server",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
+  "engines": {
+    "node": "18.x"
+  },
   "dependencies": {
     "@whiskeysockets/baileys": "^6.7.7",
     "express": "^4.18.2",
-    "qrcode": "^1.5.4"
+    "qrcode": "^1.5.4",
+    "pino": "^8.0.0"
   }
 }
