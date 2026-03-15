@@ -3,14 +3,19 @@ const QRCode = require("qrcode")
 const { default: makeWASocket, useMultiFileAuthState } = require("@whiskeysockets/baileys")
 
 const app = express()
+app.use(express.json())
 
+// kuhifadhi sessions za users
 const sessions = {}
 
+// function ya kuanzisha WhatsApp session
 async function startSession(userId) {
 
  const { state, saveCreds } = await useMultiFileAuthState(`sessions/${userId}`)
 
- const sock = makeWASocket({ auth: state })
+ const sock = makeWASocket({
+  auth: state
+ })
 
  sock.ev.on("creds.update", saveCreds)
 
@@ -22,14 +27,25 @@ async function startSession(userId) {
 
   if (connection === "open") {
    sessions[userId].connected = true
+   console.log("WhatsApp connected for user:", userId)
+  }
+
+  if (connection === "close") {
+   sessions[userId].connected = false
+   console.log("WhatsApp disconnected for user:", userId)
   }
 
  })
 
- sessions[userId] = { sock, connected: false }
+ sessions[userId] = {
+  sock,
+  connected: false,
+  qr: null
+ }
 
 }
 
+// endpoint ya kupata QR
 app.get("/qr/:userId", async (req, res) => {
 
  const userId = req.params.userId
@@ -38,13 +54,52 @@ app.get("/qr/:userId", async (req, res) => {
   await startSession(userId)
  }
 
+ const session = sessions[userId]
+
+ if (!session.qr) {
+  return res.json({
+   connected: session.connected
+  })
+ }
+
  res.json({
-  qr: sessions[userId].qr,
-  connected: sessions[userId].connected
+  qr: session.qr,
+  connected: session.connected
  })
 
 })
 
-app.listen(3000, () => {
- console.log("WhatsApp server running")
+// endpoint ya kutuma message
+app.post("/send", async (req, res) => {
+
+ const { userId, to, message } = req.body
+
+ const session = sessions[userId]
+
+ if (!session) {
+  return res.json({ error: "session not found" })
+ }
+
+ try {
+
+  await session.sock.sendMessage(to, { text: message })
+
+  res.json({
+   status: "sent"
+  })
+
+ } catch (err) {
+
+  res.json({
+   error: "failed to send message"
+  })
+
+ }
+
 })
+
+// server start
+app.listen(3000, () => {
+ console.log("Mgodi WhatsApp Server running on port 3000")
+})
+
