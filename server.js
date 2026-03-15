@@ -19,7 +19,6 @@ if (!fs.existsSync("./sessions")) {
 
 /*
 HEALTH CHECK
-Railway hutumia hii kujua server iko alive
 */
 app.get("/", (req, res) => {
  res.send("Mgodi WhatsApp Server Running")
@@ -64,6 +63,7 @@ async function startSession(userId) {
     lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut
 
    if (shouldReconnect) {
+    console.log("Reconnecting session:", userId)
     startSession(userId)
    }
 
@@ -83,16 +83,34 @@ app.get("/qr/:userId", async (req, res) => {
 
  const session = sessions[userId]
 
- if (!session.qr) {
-  return res.json({
-   connected: session.connected
-  })
- }
+ let attempts = 0
 
- res.json({
-  qr: session.qr,
-  connected: session.connected
- })
+ const interval = setInterval(() => {
+
+  if (session.qr) {
+
+   clearInterval(interval)
+
+   return res.json({
+    qr: session.qr,
+    connected: session.connected
+   })
+
+  }
+
+  attempts++
+
+  if (attempts > 15) {
+
+   clearInterval(interval)
+
+   return res.json({
+    connected: session.connected
+   })
+
+  }
+
+ }, 1000)
 
 })
 
