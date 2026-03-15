@@ -1,23 +1,30 @@
 const express = require("express")
 const fs = require("fs")
-const { default: makeWASocket, useMultiFileAuthState } = require("@whiskeysockets/baileys")
 const QRCode = require("qrcode")
+const pino = require("pino")
+
+const {
+ default: makeWASocket,
+ useMultiFileAuthState,
+ DisconnectReason
+} = require("@whiskeysockets/baileys")
 
 const app = express()
 
-// kuhakikisha sessions folder ipo
-if (!fs.existsSync("sessions")) {
- fs.mkdirSync("sessions")
-}
-
 const sessions = {}
+
+// hakikisha sessions folder ipo
+if (!fs.existsSync("./sessions")) {
+ fs.mkdirSync("./sessions")
+}
 
 async function startSession(userId) {
 
- const { state, saveCreds } = await useMultiFileAuthState("sessions/" + userId)
+ const { state, saveCreds } = await useMultiFileAuthState("./sessions/" + userId)
 
  const sock = makeWASocket({
   auth: state,
+  logger: pino({ level: "silent" }),
   printQRInTerminal: true
  })
 
@@ -31,37 +38,37 @@ async function startSession(userId) {
 
  sock.ev.on("connection.update", async (update) => {
 
-  const { connection, qr } = update
+  const { connection, qr, lastDisconnect } = update
 
-  // QR ikitoka
   if (qr) {
    sessions[userId].qr = await QRCode.toDataURL(qr)
-   console.log("QR generated for user:", userId)
+   console.log("QR generated for", userId)
   }
 
-  // connection ikifanikiwa
   if (connection === "open") {
    sessions[userId].connected = true
    sessions[userId].qr = null
    console.log("WhatsApp connected:", userId)
   }
 
-  // connection ikikatika
   if (connection === "close") {
-   console.log("Connection closed:", userId)
 
-   // restart session
-   setTimeout(() => {
+   const shouldReconnect =
+    lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut
+
+   if (shouldReconnect) {
+    console.log("Reconnecting session:", userId)
     startSession(userId)
-   }, 3000)
+   }
+
   }
 
  })
 
 }
 
-// test route
-app.get("/", (req,res)=>{
+// root route
+app.get("/", (req, res) => {
  res.send("Mgodi WhatsApp Server Running")
 })
 
@@ -70,21 +77,18 @@ app.get("/qr/:userId", async (req, res) => {
 
  const userId = req.params.userId
 
- // kama session haipo ianzishwe
  if (!sessions[userId]) {
   await startSession(userId)
  }
 
  const session = sessions[userId]
 
- // kama QR bado haijatoka
  if (!session.qr) {
   return res.json({
    connected: session.connected
   })
  }
 
- // rudisha QR
  res.json({
   qr: session.qr,
   connected: session.connected
@@ -95,6 +99,5 @@ app.get("/qr/:userId", async (req, res) => {
 const PORT = process.env.PORT || 3000
 
 app.listen(PORT, () => {
- console.log("Mgodi WhatsApp Server running on port", PORT)
+ console.log("Server running on port", PORT)
 })
-
