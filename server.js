@@ -13,10 +13,17 @@ const app = express()
 
 const sessions = {}
 
-// hakikisha sessions folder ipo
 if (!fs.existsSync("./sessions")) {
  fs.mkdirSync("./sessions")
 }
+
+/*
+HEALTH CHECK
+Railway hutumia hii kujua server iko alive
+*/
+app.get("/", (req, res) => {
+ res.send("Mgodi WhatsApp Server Running")
+})
 
 async function startSession(userId) {
 
@@ -57,7 +64,6 @@ async function startSession(userId) {
     lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut
 
    if (shouldReconnect) {
-    console.log("Reconnecting session:", userId)
     startSession(userId)
    }
 
@@ -67,12 +73,6 @@ async function startSession(userId) {
 
 }
 
-// root route
-app.get("/", (req, res) => {
- res.send("Mgodi WhatsApp Server Running")
-})
-
-// QR route
 app.get("/qr/:userId", async (req, res) => {
 
  const userId = req.params.userId
@@ -96,7 +96,7 @@ app.get("/qr/:userId", async (req, res) => {
 
 })
 
-const PORT = process.env.PORT || 3000
+const PORT = process.env.PORT || 8080
 
 app.listen(PORT, () => {
  console.log("Server running on port", PORT)
